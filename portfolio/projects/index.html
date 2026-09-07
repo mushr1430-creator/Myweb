@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#000000">
+    <meta name="description" content="Zportfolio2026 — 项目总览">
+    <title>Projects — Zportfolio2026</title>
+    <link rel="icon" href="/blank.png" type="image/png">
+    <link rel="stylesheet" href="/assets/projects-webgl.css?v=20260902-6">
+  </head>
+  <body>
+    <div class="page-background" aria-hidden="true"></div>
+    <canvas class="webgl" aria-label="可滚动的 3D 项目作品画廊"></canvas>
+
+    <div class="loading-screen" aria-live="polite">
+      <div class="loading-brand">ZHANG D.</div>
+      <div class="loading-track"><span></span></div>
+      <p><span class="loading-value">0</span>%</p>
+    </div>
+
+    <header class="site-header">
+      <a class="brand" href="/" aria-label="返回首页">ZHANG D.</a>
+      <nav class="project-nav" aria-label="主要导航">
+        <a class="is-current" href="/projects" aria-current="page">PROJECTS</a>
+      </nav>
+    </header>
+
+    <a class="hover-project" href="/project/kapsul" aria-hidden="true" tabindex="-1">
+      <img src="/assets/star-helm-projects-cover.png" alt=""><span>星舵 Star Helm</span>
+    </a>
+
+    <button class="sound-button" type="button" aria-pressed="false" aria-label="开启交互声音"><img src="/assets/sound-muted.svg" alt=""></button>
+    <p class="scroll-hint" aria-hidden="true">scroll to explore</p>
+
+    <script type="module" src="/assets/projects-webgl.js?v=20260907-hidden-projects"></script>
+  </body>
+</html>
