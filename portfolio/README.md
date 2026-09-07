@@ -1,8 +1,8 @@
 # 张玳源作品集
 
-线上网址：https://mushr1430-creator.github.io/Myweb/
+线上网址：https://zdy0416.github.io/
 
-GitHub 仓库：https://github.com/mushr1430-creator/Myweb
+GitHub 仓库：https://github.com/Zdy0416/zdy0416.github.io
 
 ## 以后如何修改
 
@@ -22,7 +22,7 @@ GitHub 仓库：https://github.com/mushr1430-creator/Myweb
 在源码文件夹运行 `pnpm install`，然后 `pnpm dev`。
 
 - `pnpm build`：生成根路径托管版本到 `dist/`。
-- `pnpm build:github`：生成适配 `/Myweb/` 的 GitHub Pages 版本到 `dist/`。
+- `pnpm build:github`：生成适配个人主页根路径 `/` 的 GitHub Pages 版本到 `dist/`。
 
 构建会通过 `scripts/sync-page-data.mjs` 同步页面跳转数据。不要直接修改生成的 `dist/`；请修改源码后重新构建。
 
