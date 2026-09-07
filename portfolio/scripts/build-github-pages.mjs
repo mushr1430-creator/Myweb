@@ -2,7 +2,7 @@ import './copy-static.mjs';
 import { readFile, writeFile, readdir, rm, mkdir } from 'node:fs/promises';
 
 const output = new URL('../dist/', import.meta.url);
-const base = '/Myweb/';
+const base = '/';
 const prefix = base.slice(0, -1);
 const assetPath = (value) => value.startsWith('/') && !value.startsWith('//') && !value.startsWith(base)
   ? prefix + value : value;
@@ -47,9 +47,9 @@ const routeExpression = 't.replace(window.location.origin,"")';
 if (!main.includes(routeExpression)) throw new Error('The legacy router changed; review the Pages path adapter.');
 main = main.replaceAll('window.location.pathname', 'window.portfolioRoute(window.location.href)')
   .replace(routeExpression, 'window.portfolioRoute(t)')
-  .replaceAll('"/d?v=', '"/Myweb/d?v=')
-  .replaceAll('"/data.json"', '"/Myweb/data.json"')
-  .replaceAll('"/mbBG.mp4"', '"/Myweb/mbBG.mp4"');
+  .replaceAll('"/d?v=', '"' + prefix + '/d?v=')
+  .replaceAll('"/data.json"', JSON.stringify(prefix + '/data.json'))
+  .replaceAll('"/mbBG.mp4"', JSON.stringify(prefix + '/mbBG.mp4'));
 // Keep route identifiers canonical while media and actual links include the Pages base.
 main = `window.portfolioRoute = function (value) {
   var path = new URL(value, window.location.origin).pathname;
@@ -58,7 +58,7 @@ main = `window.portfolioRoute = function (value) {
   return path.length > 1 ? path.replace(/\\/$/, '') : path;
 };\n` + main;
 // All Projects uses its own renderer and must navigate as a full page.
-main = main.replace('"/projects"===n', '"/Myweb/projects"===n');
+main = main.replace('"/projects"===n', JSON.stringify(prefix + '/projects') + '===n');
 await writeFile(new URL('main.js', output), main);
 
 const manifest = JSON.parse(await readFile(new URL('site.webmanifest', output), 'utf8'));
