@@ -1,6 +1,6 @@
 # 张玳源作品集
 
-线上网址：https://mushr1430-creator.github.io/Myweb/
+线上网址：https://zdy0416.github.io/
 
 ## 当前网站
 
@@ -22,4 +22,4 @@
 
 进入 `portfolio` 文件夹，运行 `pnpm install`，然后 `pnpm dev`。
 
-`pnpm build:github` 生成适配 `/Myweb/` 的发布文件到 `dist/`。修改源码后重新构建，不要直接编辑生成的 `dist/`。
+`pnpm build:github` 生成适配个人主页根路径 `/` 的发布文件到 `dist/`。修改源码后重新构建，不要直接编辑生成的 `dist/`。
