@@ -1,0 +1,243 @@
+.multimedia-project .project_hero_img {
+  isolation: isolate;
+  z-index: 1;
+  visibility: visible !important;
+}
+
+.multimedia-project .project_hero_img > img {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.multimedia-project .project_hero_title,
+.multimedia-project .project_hero_description,
+.multimedia-project .project_hero_roles_title,
+.multimedia-project .project_hero_roles {
+  z-index: 2;
+  pointer-events: none;
+}
+
+.multimedia-hero-video-launch {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 3rem;
+  background: #000;
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
+}
+
+.multimedia-hero-video-preview {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: #000;
+  pointer-events: none;
+}
+
+.multimedia-hero-video-label {
+  position: absolute;
+  right: 2.4rem;
+  bottom: 2.4rem;
+  z-index: 2;
+  padding: 1rem 1.4rem .9rem;
+  border: 1px solid rgba(255, 255, 255, .55);
+  border-radius: 10rem;
+  background: rgba(0, 0, 0, .5);
+  color: #fff;
+  font-size: 1.2rem;
+  line-height: 1;
+  letter-spacing: -.02rem;
+  text-transform: uppercase;
+  backdrop-filter: blur(1rem);
+  pointer-events: none;
+}
+
+.multimedia-project .project_row_hero_media:has(.multimedia-landscape-video) {
+  isolation: isolate;
+}
+
+.multimedia-landscape-video-launch {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 3rem;
+  background: transparent;
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
+}
+
+.multimedia-landscape-video-label {
+  position: absolute;
+  right: 2.4rem;
+  bottom: 2.4rem;
+  padding: 1rem 1.4rem .9rem;
+  border: 1px solid rgba(255, 255, 255, .55);
+  border-radius: 10rem;
+  background: rgba(0, 0, 0, .5);
+  color: #fff;
+  font-size: 1.2rem;
+  line-height: 1;
+  letter-spacing: -.02rem;
+  text-transform: uppercase;
+  pointer-events: none;
+  backdrop-filter: blur(1rem);
+}
+
+.multimedia-video-modal[hidden] {
+  display: none;
+}
+
+.multimedia-video-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 10000001;
+  display: grid;
+  place-items: center;
+  width: 100vw;
+  height: 100vh;
+  background: #000;
+  cursor: default !important;
+}
+
+.multimedia-video-modal * {
+  cursor: default !important;
+}
+
+.multimedia-video-modal:fullscreen {
+  width: 100vw;
+  height: 100vh;
+  background: #000;
+}
+
+.multimedia-video-modal-video {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  object-fit: contain;
+  background: #000;
+}
+
+.multimedia-video-close {
+  position: absolute;
+  top: max(2rem, env(safe-area-inset-top));
+  right: max(2rem, env(safe-area-inset-right));
+  z-index: 3;
+  min-width: 7.6rem;
+  min-height: 4.2rem;
+  padding: .9rem 1.6rem .8rem;
+  border: 1px solid rgba(255, 255, 255, .55);
+  border-radius: 10rem;
+  background: rgba(0, 0, 0, .62);
+  color: #fff;
+  font: 500 1.4rem/1 "PP Telegraf", sans-serif;
+  letter-spacing: -.02rem;
+  text-transform: uppercase;
+  cursor: pointer !important;
+  backdrop-filter: blur(1rem);
+}
+
+.multimedia-video-close:focus-visible,
+.multimedia-hero-video-launch:focus-visible,
+.multimedia-landscape-video-launch:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 4px;
+}
+
+html.phone .multimedia-hero-video-launch,
+html.tablet .multimedia-hero-video-launch,
+html.phone .multimedia-landscape-video-launch,
+html.tablet .multimedia-landscape-video-launch {
+  border-radius: 2rem;
+}
+
+html.phone .multimedia-hero-video-label,
+html.tablet .multimedia-hero-video-label,
+html.phone .multimedia-landscape-video-label,
+html.tablet .multimedia-landscape-video-label {
+  right: 1.4rem;
+  bottom: 1.4rem;
+  padding: .8rem 1rem .7rem;
+  font-size: 1rem;
+}
+
+@media (max-width: 900px) {
+  .multimedia-video-close {
+    top: max(1.4rem, env(safe-area-inset-top));
+    right: max(1.4rem, env(safe-area-inset-right));
+    min-width: 6.8rem;
+    min-height: 4.4rem;
+    font-size: 1.2rem;
+  }
+}
+
+.multimedia-project .multimedia-video-heading,
+.multimedia-project .multimedia-homepage-heading {
+  text-transform: none;
+}
+
+.multimedia-project .project_row_hero_media.framia-homepage-media {
+  height: auto;
+}
+
+.multimedia-project .framia-homepage-media img {
+  display: block;
+  width: 100%;
+  height: auto;
+  visibility: visible;
+}
+
+/* Keep the existing staggered columns while showing each campaign image in full. */
+.multimedia-project .operations-design-gallery .project_mobile_scroll_media_wp {
+  height: auto;
+}
+
+.multimedia-project .operations-design-gallery .project_mobile_scroll_media_wp img {
+  display: block;
+  position: static;
+  width: 100%;
+  height: auto;
+  margin: 0;
+  object-fit: contain;
+}
+
+.multimedia-project .operations-banner-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2rem;
+  width: 134rem;
+  margin: 0 auto 10rem;
+}
+
+.multimedia-project .operations-banner-grid img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+html.tablet .multimedia-project .operations-banner-grid {
+  width: 70.8rem;
+}
+
+html.phone .multimedia-project .operations-banner-grid {
+  width: 33.5rem;
+  gap: 1rem;
+}
