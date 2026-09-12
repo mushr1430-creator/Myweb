@@ -3,17 +3,21 @@
   window.__portfolioSmoothWheelInstalled = true;
 
   const generatedEvents = new WeakSet();
-  const isProjectsPage = /^\/projects\/?$/.test(window.location.pathname);
   const speed = 0.42;
   const release = 0.22;
-  let projectWheelDistance = 0;
-  let projectWheelLocked = false;
-  let projectWheelUnlockTimer = 0;
   let pendingX = 0;
   let pendingY = 0;
   let frame = 0;
   let sourceTarget = document;
   let sourceEvent = null;
+
+  // An embedded section takes over input without inheriting queued page inertia.
+  window.addEventListener("portfolio:clear-wheel", () => {
+    cancelAnimationFrame(frame);
+    frame = 0;
+    pendingX = pendingY = 0;
+    sourceEvent = null;
+  });
 
   const dispatchStep = () => {
     frame = 0;
@@ -37,6 +41,8 @@
       shiftKey: sourceEvent.shiftKey,
       metaKey: sourceEvent.metaKey,
     });
+    // Section gates must distinguish page easing from a new physical gesture.
+    Object.defineProperty(smoothEvent, "__portfolioSmoothedWheel", { value: true });
     generatedEvents.add(smoothEvent);
     (sourceTarget?.isConnected ? sourceTarget : document).dispatchEvent(
       smoothEvent,
@@ -51,7 +57,7 @@
     "wheel",
     (event) => {
       if (generatedEvents.has(event)) return;
-      if (event.__projectsSliderGesture) return;
+      if (event.target.closest?.('.home-spiral-fallback')) return;
       if (!document.documentElement.classList.contains("desktop")) return;
       if (event.ctrlKey || event.metaKey) return;
 
@@ -59,45 +65,6 @@
       event.stopPropagation();
       event.stopImmediatePropagation();
 
-      if (isProjectsPage) {
-        const modeScale =
-          event.deltaMode === WheelEvent.DOM_DELTA_LINE
-            ? 16
-            : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
-              ? window.innerHeight
-              : 1;
-        const dominantDelta =
-          Math.abs(event.deltaY) >= Math.abs(event.deltaX)
-            ? event.deltaY
-            : event.deltaX;
-
-        clearTimeout(projectWheelUnlockTimer);
-        projectWheelUnlockTimer = window.setTimeout(() => {
-          projectWheelLocked = false;
-          projectWheelDistance = 0;
-        }, 260);
-
-        if (projectWheelLocked) return;
-        projectWheelDistance += dominantDelta * modeScale;
-
-        if (Math.abs(projectWheelDistance) >= 28) {
-          const stepEvent = new WheelEvent("wheel", {
-            bubbles: true,
-            cancelable: true,
-            deltaMode: WheelEvent.DOM_DELTA_PIXEL,
-            deltaY: Math.sign(projectWheelDistance) * 40,
-          });
-          Object.defineProperty(stepEvent, "__projectsSliderGesture", {
-            value: true,
-          });
-          projectWheelDistance = 0;
-          projectWheelLocked = true;
-          (event.target?.isConnected ? event.target : document).dispatchEvent(
-            stepEvent,
-          );
-        }
-        return;
-      }
 
       const modeScale =
         event.deltaMode === WheelEvent.DOM_DELTA_LINE

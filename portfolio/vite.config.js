@@ -3,9 +3,9 @@ import { resolve } from "node:path";
 
 const dataFile = new URL("./d", import.meta.url);
 const routeFiles = new Map([
-  ["/projects", new URL("./projects/index.html", import.meta.url)],
   ["/contact", new URL("./contact/index.html", import.meta.url)],
   ["/project/kapsul", new URL("./project/kapsul/index.html", import.meta.url)],
+  ["/project/jd-ai-guide", new URL("./project/jd-ai-guide/index.html", import.meta.url)],
   [
     "/project/ling-ling-2",
     new URL("./project/ling-ling-2/index.html", import.meta.url),
@@ -46,6 +46,13 @@ export default {
           const normalizedPath =
             pathname.length > 1 ? pathname.replace(/\/$/, "") : pathname;
 
+          if (normalizedPath === "/projects" || normalizedPath === "/projects/index.html") {
+            response.statusCode = 302;
+            response.setHeader("Location", "/#all-projects");
+            response.end();
+            return;
+          }
+
           if (normalizedPath === "/about") {
             response.statusCode = 302;
             response.setHeader("Location", "/");
@@ -83,6 +90,13 @@ export default {
           const pathname = request.url?.split("?")[0] || "/";
           const normalizedPath =
             pathname.length > 1 ? pathname.replace(/\/$/, "") : pathname;
+
+          if (normalizedPath === "/projects" || normalizedPath === "/projects/index.html") {
+            response.statusCode = 302;
+            response.setHeader("Location", "/#all-projects");
+            response.end();
+            return;
+          }
 
           if (normalizedPath === "/d") {
             try {

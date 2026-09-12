@@ -1,0 +1,53 @@
+[
+  {
+    "title": "星舵 Star Helm",
+    "category": "AR Game",
+    "image": "/assets/star-helm-projects-cover.png",
+    "route": "/project/kapsul"
+  },
+  {
+    "title": "艺术与科技双年展",
+    "category": "Visual Design",
+    "image": "/assets/art-tech-biennale-project-cover.png",
+    "route": "/project/ling-ling-2"
+  },
+  {
+    "title": "Framia",
+    "category": "UI/UX Design",
+    "image": "/assets/framia-project-cover.png",
+    "route": "/project/vistria"
+  },
+  {
+    "title": "Combos",
+    "category": "Visual Design",
+    "image": "/assets/combos-project-cover.png",
+    "route": "/project/taylormade"
+  },
+  {
+    "title": "京东 AI 导购",
+    "category": "UI/UX Design",
+    "image": "/assets/jd-ai-project-cover.png",
+    "coverBackground": "#c9c3fb",
+    "route": "/project/jd-ai-guide",
+    "hidden": false
+  },
+  {
+    "title": "Multimedia Design",
+    "category": "AI Video",
+    "image": "/assets/framia-projects.png",
+    "route": "/project/the-fantastic-bowl"
+  },
+  {
+    "title": "策展",
+    "category": "Exhibition Design",
+    "image": "/assets/curatorial-project-cover.png",
+    "route": "/project/irvine-company",
+    "hidden": false
+  },
+  {
+    "title": "VR 影片：白霭区",
+    "category": "VR Film",
+    "image": "/assets/vr-white-mist-project-cover.jpg",
+    "route": "/project/four-sigmatic"
+  }
+]

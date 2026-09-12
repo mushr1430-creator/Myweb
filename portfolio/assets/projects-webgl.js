@@ -2,18 +2,10 @@ import * as THREE from "three";
 import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
+import { ShaderPass } from "three/addons/postprocessing/ShaderPass.js";
 import { gsap } from "gsap";
-
-const PROJECT_CATALOG = [
-  { title: "星舵 Star Helm", image: "/assets/star-helm-projects-cover.png", route: "/project/kapsul" },
-  { title: "艺术与科技双年展", image: "/assets/art-tech-biennale-projects.png", route: "/project/ling-ling-2" },
-  { title: "Framia", image: "/assets/framia-ux-cover.png", route: "https://framia.converge.ai/zh-CN/", newTab: true },
-  { title: "Combos", image: "/assets/combos-visual-cover.png", route: "https://combos.converge.ai/", newTab: true },
-  { title: "京东 AI 导购", image: "/assets/jd-ai-ux-cover.png", route: null, hidden: true },
-  { title: "Multimedia Design", image: "/assets/framia-projects.png", route: "/project/the-fantastic-bowl" },
-  { title: "策展", image: "/assets/curatorial-projects-cover.png", route: "/project/irvine-company", hidden: true },
-  { title: "VR 影片：白霭区", image: "/assets/vr-white-mist-landscape.jpg", route: "/project/four-sigmatic" }
-];
+import { HOME_BACKGROUND_FRAGMENT } from "./home-background.js";
+import PROJECT_CATALOG from "./project-catalog.json";
 
 // Set hidden to false to restore a project to All Projects.
 const PROJECTS = PROJECT_CATALOG.filter((project) => !project.hidden);
@@ -47,6 +39,56 @@ const FRAGMENT_SHADER = `
   uniform vec2 uImageSizes;
   uniform float uRevealProgress;
   uniform float uHoverProgress;
+  uniform sampler2D uCoverDisplacement;
+  uniform vec2 uCoverPointer;
+  uniform vec2 uCoverResolution;
+  uniform float uCoverTime;
+  uniform float uCoverActive;
+
+  // The portrait's five-octave noise gives the inverted patch its torn edge.
+  float coverRandom(vec2 point) {
+    return fract(sin(dot(point, vec2(12.9898, 78.233))) * 43758.5453123);
+  }
+
+  float coverNoise(vec2 point) {
+    vec2 cell = floor(point);
+    vec2 fraction = fract(point);
+    vec2 blend = fraction * fraction * (3.0 - 2.0 * fraction);
+    return mix(
+      mix(coverRandom(cell), coverRandom(cell + vec2(1.0, 0.0)), blend.x),
+      mix(coverRandom(cell + vec2(0.0, 1.0)), coverRandom(cell + vec2(1.0)), blend.x),
+      blend.y
+    );
+  }
+
+  float coverFbm(vec2 point) {
+    float value = 0.0;
+    float amplitude = 0.5;
+    mat2 rotation = mat2(cos(0.5), sin(0.5), -sin(0.5), cos(0.5));
+    for (int octave = 0; octave < 5; octave++) {
+      value += amplitude * coverNoise(point);
+      point = rotation * point * 2.0 + vec2(100.0);
+      amplitude *= 0.5;
+    }
+    return value;
+  }
+
+  vec3 applyCoverHover(vec3 baseColor, vec2 imageUv) {
+    if (uCoverActive < 0.001 || !gl_FrontFacing) return baseColor;
+    // Screen coordinates keep the brush under the cursor on curved, rotating covers.
+    vec2 screenUv = gl_FragCoord.xy / uCoverResolution;
+    vec2 offset = (screenUv - uCoverPointer) * vec2(1.0, uCoverResolution.y / uCoverResolution.x);
+    if (dot(offset, offset) > 0.0196) return baseColor;
+    float circle = (1.0 - smoothstep(0.018 - 0.018 * 16.1, 0.018 + 0.018 * 16.1, dot(offset, offset) * 4.0)) * 3.5;
+    float noise = coverFbm(imageUv * 20.0 + vec2(-0.1, 0.08) * uCoverTime);
+    // Avoid GLSL reserved identifiers: a shader compile failure hides every cover.
+    float inkMask = step(3.5, noise + circle * circle) * uCoverActive;
+    vec2 displacement = texture2D(uCoverDisplacement, screenUv).rg;
+    vec4 shiftedColor = texture2D(uTexture, clamp(imageUv - displacement * 0.1, vec2(0.001), vec2(0.999)));
+    // Match the portrait's RGB inversion before Three's linear-light output pass.
+    vec3 inverted = 1.0 - sRGBTransferOETF(shiftedColor).rgb;
+    return mix(baseColor, sRGBTransferEOTF(vec4(inverted, 1.0)).rgb, inkMask);
+  }
 
   float roundedBoxSDF(vec2 centerPosition, vec2 size, float radius) {
     return length(max(abs(centerPosition) - size + radius, 0.0)) - radius;
@@ -87,6 +129,7 @@ const FRAGMENT_SHADER = `
     vec3 glowColor = mix(vec3(0.12, 0.28, 0.82), vec3(0.5, 0.12, 0.78), vUv.y);
     float glowStrength = mix(0.08, 0.13, clamp(uHoverProgress, 0.0, 1.0));
     vec3 finalColor = textureColor.rgb * hoverBrightness + glowColor * edgeGlow * glowStrength;
+    finalColor = applyCoverHover(finalColor, imageUv);
     gl_FragColor = vec4(finalColor, textureColor.a * mask);
   }
 `;
@@ -94,40 +137,85 @@ const FRAGMENT_SHADER = `
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
 const modulo = (value, length) => ((value % length) + length) % length;
 
-class InteractionSound {
-  constructor(button) {
-    this.button = button;
-    this.enabled = false;
-    this.context = null;
-    button.addEventListener("click", () => this.toggle());
+// A shared version of the portrait's 16x16 velocity field; no extra render pass.
+class CoverHover {
+  constructor() {
+    this.size = 16;
+    this.data = new Float32Array(this.size * this.size * 4);
+    this.texture = new THREE.DataTexture(this.data, this.size, this.size, THREE.RGBAFormat, THREE.FloatType);
+    this.texture.minFilter = this.texture.magFilter = THREE.NearestFilter;
+    this.texture.needsUpdate = true;
+    this.pointer = new THREE.Vector2(2, 2);
+    this.target = new THREE.Vector2(2, 2);
+    this.velocity = new THREE.Vector2();
+    this.inside = false;
+    this.uniforms = {
+      uCoverDisplacement: { value: this.texture },
+      uCoverPointer: { value: this.pointer },
+      uCoverResolution: { value: new THREE.Vector2(1, 1) },
+      uCoverTime: { value: 0 },
+      uCoverActive: { value: 0 }
+    };
   }
 
-  toggle() {
-    this.enabled = !this.enabled;
-    if (this.enabled && !this.context) {
-      this.context = new AudioContext();
+  move(x, y) {
+    if (!this.inside) {
+      this.pointer.set(x, y);
+      this.velocity.set(0, 0);
+    } else {
+      this.velocity.x = clamp(this.velocity.x + x - this.target.x, -0.08, 0.08);
+      this.velocity.y = clamp(this.velocity.y + y - this.target.y, -0.08, 0.08);
     }
-    this.button.setAttribute("aria-pressed", String(this.enabled));
-    this.button.setAttribute("aria-label", this.enabled ? "关闭交互声音" : "开启交互声音");
-    this.button.querySelector("img").src = this.enabled ? "/assets/sound-active.svg" : "/assets/sound-muted.svg";
-    this.play("click");
+    this.target.set(x, y);
+    this.inside = true;
   }
 
-  play(kind = "hover") {
-    if (!this.enabled || !this.context) return;
-    const oscillator = this.context.createOscillator();
-    const gain = this.context.createGain();
-    const now = this.context.currentTime;
-    oscillator.type = "sine";
-    oscillator.frequency.setValueAtTime(kind === "click" ? 330 : 520, now);
-    oscillator.frequency.exponentialRampToValueAtTime(kind === "click" ? 480 : 420, now + 0.07);
-    gain.gain.setValueAtTime(0.0001, now);
-    gain.gain.exponentialRampToValueAtTime(0.035, now + 0.01);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.08);
-    oscillator.connect(gain).connect(this.context.destination);
-    oscillator.start(now);
-    oscillator.stop(now + 0.09);
+  leave() {
+    this.inside = false;
+    this.velocity.set(0, 0);
   }
+
+  reset() {
+    this.leave();
+    this.uniforms.uCoverActive.value = 0;
+    this.data.fill(0);
+    this.texture.needsUpdate = true;
+  }
+
+  update(delta, enabled) {
+    if (!enabled) {
+      if (this.inside || this.uniforms.uCoverActive.value) this.reset();
+      return;
+    }
+    const frames = delta / (1000 / 60);
+    this.uniforms.uCoverTime.value += delta * 0.003;
+    this.pointer.lerp(this.target, 1 - Math.exp(-delta / 160));
+    const active = this.uniforms.uCoverActive;
+    active.value += ((this.inside ? 1 : 0) - active.value) * (1 - Math.exp(-delta / 80));
+    if (!this.inside && active.value < 0.001) { active.value = 0; return; }
+
+    const decay = Math.pow(0.9, frames);
+    const x = this.target.x * this.size - 0.5;
+    const y = this.target.y * this.size - 0.5;
+    const radius = this.size / 4;
+    for (let row = 0; row < this.size; row++) {
+      for (let column = 0; column < this.size; column++) {
+        const index = 4 * (column + this.size * row);
+        this.data[index] *= decay;
+        this.data[index + 1] *= decay;
+        const distance = Math.hypot(x - column, y - row);
+        if (this.inside && distance < radius) {
+          const weight = Math.min(10, radius / Math.max(distance, 0.001));
+          this.data[index] += 3 * this.velocity.x * weight * frames;
+          this.data[index + 1] += 3 * this.velocity.y * weight * frames;
+        }
+      }
+    }
+    this.velocity.multiplyScalar(Math.pow(0.5, frames));
+    this.texture.needsUpdate = true;
+  }
+
+  dispose() { this.texture.dispose(); }
 }
 
 class SpiralControls {
@@ -147,60 +235,79 @@ class SpiralControls {
     this.lastTouchX = 0;
     this.touchStartX = 0;
     this.touchVelocityX = 0;
+    this.lastTouchY = 0;
+    this.touchStartY = 0;
+    this.events = new AbortController();
     this.install();
   }
 
+  onWheel(delta) {
+    this.targetWheelDeltaY = clamp(this.targetWheelDeltaY + delta * this.wheelSensitivity, -this.maxWheelSpeed, this.maxWheelSpeed);
+    if (delta) this.wheelDirection = Math.sign(delta);
+    this.app.root.querySelector(".scroll-hint")?.classList.add("is-hidden");
+  }
+
   install() {
-    window.addEventListener("wheel", (event) => {
+    const signal = this.events.signal;
+    if (!this.app.embedded) window.addEventListener("wheel", (event) => {
       if (!this.app.isSpiralActive()) return;
       event.preventDefault();
-      this.targetWheelDeltaY += event.deltaY * this.wheelSensitivity;
-      this.targetWheelDeltaY = clamp(this.targetWheelDeltaY, -this.maxWheelSpeed, this.maxWheelSpeed);
-      this.wheelDirection = event.deltaY > 0 ? 1 : -1;
-      document.querySelector(".scroll-hint")?.classList.add("is-hidden");
-    }, { passive: false });
+      this.onWheel(event.deltaY);
+    }, { passive: false, signal });
 
     this.canvas.addEventListener("pointerdown", (event) => {
+      if (!this.app.isSpiralActive()) return;
       this.pointerDown = true;
       this.dragging = false;
       this.touchStartX = event.clientX;
       this.lastTouchX = event.clientX;
+      this.touchStartY = this.lastTouchY = event.clientY;
       this.touchVelocityX = 0;
       this.canvas.setPointerCapture?.(event.pointerId);
-    });
+    }, { signal });
 
     this.canvas.addEventListener("pointermove", (event) => {
       if (!this.pointerDown || !this.app.isSpiralActive()) return;
       const distance = event.clientX - this.touchStartX;
-      if (!this.dragging && Math.abs(distance) > 8) this.dragging = true;
+      if (!this.dragging && Math.hypot(distance, event.clientY - this.touchStartY) > 8) this.dragging = true;
       if (!this.dragging) return;
-      const motion = -(event.clientX - this.lastTouchX) * 0.5;
-      this.touchVelocityX = event.clientX - this.lastTouchX;
+      const dx = event.clientX - this.lastTouchX;
+      const dy = event.clientY - this.lastTouchY;
+      const movement = Math.abs(dy) > Math.abs(dx) ? -dy : dx;
+      const motion = -movement * 0.5;
+      this.touchVelocityX = movement;
       this.targetWheelDeltaY -= motion * 0.003;
       this.targetWheelDeltaY = clamp(this.targetWheelDeltaY, -this.maxWheelSpeed, this.maxWheelSpeed);
       this.wheelDirection = motion < 0 ? 1 : -1;
       this.lastTouchX = event.clientX;
-    });
+      this.lastTouchY = event.clientY;
+    }, { signal });
 
     const release = (event) => {
       if (!this.pointerDown) return;
-      this.targetWheelDeltaY -= this.touchVelocityX * 0.002;
+      this.targetWheelDeltaY += this.touchVelocityX * 0.002;
       this.targetWheelDeltaY = clamp(this.targetWheelDeltaY, -this.maxWheelSpeed, this.maxWheelSpeed);
       this.pointerDown = false;
       this.canvas.releasePointerCapture?.(event.pointerId);
       window.setTimeout(() => { this.dragging = false; }, 0);
     };
-    this.canvas.addEventListener("pointerup", release);
-    this.canvas.addEventListener("pointercancel", release);
+    this.canvas.addEventListener("pointerup", release, { signal });
+    this.canvas.addEventListener("pointercancel", release, { signal });
   }
 
-  update() {
-    this.wheelDeltaY += (this.targetWheelDeltaY - this.wheelDeltaY) * this.easing;
-    this.scrollOffset += this.wheelDeltaY;
-    if (Math.abs(this.targetWheelDeltaY) < this.minWheelSpeed) {
-      this.targetWheelDeltaY = this.wheelDirection * this.minWheelSpeed;
+  update(delta = 1000 / 60) {
+    const frames = delta / (1000 / 60);
+    this.wheelDeltaY += (this.targetWheelDeltaY - this.wheelDeltaY) * (1 - Math.pow(1 - this.easing, frames));
+    this.scrollOffset += this.wheelDeltaY * frames;
+    const minimum = this.app.backgroundMotion.matches ? 0 : this.minWheelSpeed;
+    if (Math.abs(this.targetWheelDeltaY) < minimum) {
+      this.targetWheelDeltaY = this.wheelDirection * minimum;
     }
-    this.targetWheelDeltaY *= 0.9;
+    this.targetWheelDeltaY *= Math.pow(0.9, frames);
+  }
+
+  destroy() {
+    this.events.abort();
   }
 }
 
@@ -218,6 +325,7 @@ class ProjectPlane {
 
     const image = texture.image;
     this.uniforms = {
+      ...experience.coverHover.uniforms,
       uTexture: { value: texture },
       uZoom: { value: 1 },
       uPlaneSizes: { value: new THREE.Vector2(1.7, 1) },
@@ -271,7 +379,7 @@ class ProjectPlane {
     this.uniforms.uZoom.value = 1 + 0.05 * this.hoverProgress;
     this.uniforms.uRevealProgress.value = (1 - this.hoverProgress * 0.05) * (1 - this.hiddenProgress);
     this.uniforms.uHoverProgress.value = this.hoverProgress;
-    this.uniforms.uScrollSpeed.value = this.experience.controls.wheelDeltaY;
+    this.uniforms.uScrollSpeed.value = this.experience.backgroundMotion.matches ? 0 : this.experience.controls.wheelDeltaY;
   }
 }
 
@@ -299,26 +407,39 @@ class World {
   }
 }
 
-class PortfolioExperience {
-  constructor() {
-    this.canvas = document.querySelector("canvas.webgl");
-    this.loading = document.querySelector(".loading-screen");
-    this.loadingValue = document.querySelector(".loading-value");
-    this.loadingBar = document.querySelector(".loading-track span");
-    this.hoverLabel = document.querySelector(".hover-project");
+export class PortfolioExperience {
+  constructor({ root = document, embedded = false, onReady, onError } = {}) {
+    this.root = root;
+    this.embedded = embedded;
+    this.active = !embedded;
+    this.visible = !embedded;
+    this.onReady = onReady;
+    this.onError = onError;
+    this.events = new AbortController();
+    this.canvas = root.querySelector("canvas.webgl");
+    this.loading = root.querySelector(".loading-screen");
+    this.loadingValue = root.querySelector(".loading-value");
+    this.loadingBar = root.querySelector(".loading-track span");
+    this.hoverLabel = root.querySelector(".hover-project");
     this.pointer = new THREE.Vector2(2, 2);
+    this.coverHover = new CoverHover();
+    this.finePointer = window.matchMedia("(hover: hover) and (pointer: fine)");
     this.raycaster = new THREE.Raycaster();
     this.hoveredPlane = null;
     this.lastTime = performance.now();
-    this.sound = new InteractionSound(document.querySelector(".sound-button"));
 
-    document.documentElement.classList.add("is-spiral");
+    if (!embedded) document.documentElement.classList.add("is-spiral");
     this.setupRenderer();
     this.controls = new SpiralControls(this.canvas, this);
     this.setupInputs();
     this.animate = this.animate.bind(this);
-    requestAnimationFrame(this.animate);
-    this.load();
+    this.frame = requestAnimationFrame(this.animate);
+    this.load().catch((error) => {
+      if (this.disposed) return;
+      this.loading.classList.add("is-complete");
+      this.onError?.(error);
+      this.destroy();
+    });
   }
 
   setupRenderer() {
@@ -336,66 +457,120 @@ class PortfolioExperience {
     this.composer = new EffectComposer(this.renderer);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
     this.composer.addPass(new OutputPass());
+    this.backgroundPass = new ShaderPass({
+      uniforms: {
+        tDiffuse: { value: null },
+        time: { value: 0 },
+        viewport: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+      },
+      vertexShader: `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: HOME_BACKGROUND_FRAGMENT
+    });
+    this.composer.addPass(this.backgroundPass);
+    // The embedded gallery shares the homepage's existing live background.
+    this.backgroundPass.enabled = !this.embedded;
+    this.backgroundMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
     this.composer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.composer.setSize(window.innerWidth, window.innerHeight);
+    this.resize();
   }
 
   async load() {
     const manager = new THREE.LoadingManager();
     manager.onProgress = (_url, loaded, total) => {
       const progress = Math.round(loaded / total * 100);
+      if (this.disposed) return;
       this.loadingValue.textContent = String(progress);
       this.loadingBar.style.transform = `scaleX(${progress / 100})`;
     };
     const loader = new THREE.TextureLoader(manager);
     const textures = new Map();
+    this.textures = textures;
     await Promise.all(PROJECTS.map(async (project) => {
       const texture = await loader.loadAsync(project.image);
+      if (this.disposed) { texture.dispose(); return; }
       texture.colorSpace = THREE.SRGBColorSpace;
       texture.minFilter = THREE.LinearFilter;
       texture.magFilter = THREE.LinearFilter;
       texture.anisotropy = Math.min(8, this.renderer.capabilities.getMaxAnisotropy());
       textures.set(project.image, texture);
     }));
+    if (this.disposed) return;
     this.world = new World(this, textures);
-    window.setTimeout(() => {
+    this.revealTimer = window.setTimeout(() => {
+      if (this.disposed) return;
       this.loading.classList.add("is-complete");
       this.world.revealProjects();
-      gsap.from([".brand", ".project-nav a", ".sound-button"], { opacity: 0, y: -20, duration: 0.7, ease: "power3.out", stagger: 0.06 });
+      this.onReady?.();
+      if (!this.embedded) gsap.from([".brand", ".project-nav a", ".sound-button"], { opacity: 0, y: -20, duration: 0.7, ease: "power3.out", stagger: 0.06 });
     }, 280);
   }
 
   setupInputs() {
+    const signal = this.events.signal;
     window.addEventListener("pointermove", (event) => {
-      this.pointer.x = event.clientX / window.innerWidth * 2 - 1;
-      this.pointer.y = -(event.clientY / window.innerHeight * 2 - 1);
-    });
-    this.canvas.addEventListener("pointerleave", () => this.pointer.set(2, 2));
+      const bounds = this.canvas.getBoundingClientRect();
+      this.pointer.x = (event.clientX - bounds.left) / bounds.width * 2 - 1;
+      this.pointer.y = -(event.clientY - bounds.top) / bounds.height * 2 + 1;
+      if (event.target === this.canvas && event.pointerType !== "touch" && this.isSpiralActive() && this.finePointer.matches && !this.backgroundMotion.matches) {
+        this.coverHover.move((this.pointer.x + 1) / 2, (this.pointer.y + 1) / 2);
+      } else this.coverHover.leave();
+    }, { signal });
+    this.canvas.addEventListener("pointerleave", () => {
+      this.pointer.set(2, 2);
+      this.coverHover.leave();
+    }, { signal });
+    window.addEventListener("blur", () => { this.pointer.set(2, 2); this.coverHover.reset(); }, { signal });
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) this.coverHover.reset();
+    }, { signal });
     this.canvas.addEventListener("click", () => {
       if (!this.isSpiralActive() || this.controls.dragging || !this.hoveredPlane?.project.route) return;
-      this.sound.play("click");
       const project = this.hoveredPlane.project;
       if (project.newTab) {
         window.open(project.route, "_blank", "noopener,noreferrer");
       } else {
         window.location.href = project.route;
       }
-    });
-    window.addEventListener("resize", () => this.resize());
+    }, { signal });
+    this.canvas.addEventListener("webglcontextlost", (event) => {
+      event.preventDefault();
+      this.onError?.(new Error("WebGL context lost"));
+      this.destroy();
+    }, { signal });
+    window.addEventListener("resize", () => this.resize(), { signal });
+    if (this.embedded) {
+      this.resizeObserver = new ResizeObserver(() => this.resize());
+      this.resizeObserver.observe(this.root);
+    }
   }
 
   isSpiralActive() {
-    return this.loading.classList.contains("is-complete");
+    return this.active && !this.disposed && this.loading.classList.contains("is-complete");
   }
 
   resize() {
-    this.camera.fov = window.innerWidth < 900 ? 45 : 35;
-    this.camera.aspect = window.innerWidth / window.innerHeight;
+    if (this.disposed) return;
+    const width = this.embedded ? this.root.clientWidth : window.innerWidth;
+    const height = this.embedded ? this.root.clientHeight : window.innerHeight;
+    this.camera.fov = width < 900 ? 45 : 35;
+    this.camera.aspect = width / Math.max(1, height);
+    // Keep the whole helix readable on narrow portrait viewports.
+    this.camera.position.z = width / height < 0.8 ? 8 * 0.8 / (width / height) : 8;
     this.camera.updateProjectionMatrix();
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    this.renderer.setSize(window.innerWidth, window.innerHeight);
+    this.renderer.setSize(width, height);
+    this.renderer.getDrawingBufferSize(this.coverHover.uniforms.uCoverResolution.value);
+    this.coverHover.reset();
     this.composer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    this.composer.setSize(window.innerWidth, window.innerHeight);
+    this.composer.setSize(width, height);
+    this.backgroundPass.uniforms.viewport.value.set(width, height);
   }
 
   updateRaycaster() {
@@ -442,7 +617,6 @@ class PortfolioExperience {
       this.hoverLabel.classList.add("is-visible");
       this.hoverLabel.setAttribute("aria-hidden", "false");
       this.hoverLabel.tabIndex = hasDetail ? 0 : -1;
-      this.sound.play("hover");
     } else {
       this.clearHover();
     }
@@ -458,20 +632,35 @@ class PortfolioExperience {
   }
 
   animate(time) {
+    if (this.disposed) return;
+    this.frame = requestAnimationFrame(this.animate);
     const delta = Math.min(time - this.lastTime, 50);
     this.lastTime = time;
+    if (!this.visible || document.hidden) return;
+    if (!this.backgroundMotion.matches) this.backgroundPass.uniforms.time.value += delta * 0.003;
+    this.coverHover.update(delta, this.isSpiralActive() && this.finePointer.matches && !this.backgroundMotion.matches);
     if (this.world) {
-      this.controls.update();
+      if (this.active) this.controls.update(delta);
       this.world.update(delta, this.controls.scrollOffset);
       this.updateRaycaster();
     }
     this.composer.render();
-    requestAnimationFrame(this.animate);
   }
-}
 
-try {
-  new PortfolioExperience();
-} catch (_error) {
-  document.querySelector(".loading-screen")?.classList.add("is-complete");
+  destroy() {
+    if (this.disposed) return;
+    this.disposed = true;
+    cancelAnimationFrame(this.frame);
+    clearTimeout(this.revealTimer);
+    this.events.abort();
+    this.resizeObserver?.disconnect();
+    this.controls?.destroy();
+    this.coverHover.dispose();
+    this.clearHover();
+    this.world?.planes.forEach((plane) => { plane.geometry.dispose(); plane.material.dispose(); });
+    this.textures?.forEach((texture) => texture.dispose());
+    this.composer.passes.forEach((pass) => pass.dispose?.());
+    this.composer.dispose();
+    this.renderer.dispose();
+  }
 }

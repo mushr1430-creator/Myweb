@@ -34,7 +34,10 @@ jobs:
           cache: pnpm
           cache-dependency-path: portfolio/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
+      - run: pnpm check:assets
+      - run: node scripts/check-section-scroll.mjs
       - run: pnpm build:github
+      - run: node scripts/check-assets.mjs dist
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v4
         with:
